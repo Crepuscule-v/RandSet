@@ -1,0 +1,50 @@
+# Variables
+[env]
+FUZZER_NAME = 'fuzzer_shape'
+CARGO_TARGET_DIR = { value = "${PROJECT_DIR}/target", condition = { env_not_set = [
+  "CARGO_TARGET_DIR",
+] } }
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+PROFILE_DIR = { source = "${PROFILE}", default_value = "release", mapping = { "release" = "release", "dev" = "debug" }, condition = { env_not_set = [
+  "PROFILE_DIR",
+] } }
+LIBAFL_CC = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cc'
+CDEFS = '-DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 -DSQLITE_MAX_MEMORY=250000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384'
+LIBAFL_CXX = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_cxx'
+LIBAFL_AR = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_ar'
+LIBAFL_LIBTOOL = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_libtool'
+FUZZER = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/${FUZZER_NAME}'
+PROJECT_DIR = { script = ["pwd"] }
+PROJECT_ROOT_DIR = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../.."] }
+LIBSQLITE = '${PROJECT_DIR}/sqlite/build/libsqlite3.a'
+JSON_PATH = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../../json/"], condition = { env_not_set = ["JSON_PATH"] } }
+
+[tasks.cc]
+condition = { files_not_exist = ["${LIBAFL_CC}"] }
+script_runner = "@shell"
+script = '''
+cargo build --profile ${PROFILE}
+'''
+
+[tasks.cxx]
+condition = { files_not_exist = ["${LIBAFL_CXX}"] }
+dependencies = ["cc"]
+
+[tasks.ar]
+condition = { files_not_exist = ["${LIBAFL_AR}"] }
+dependencies = ["cc"]
+
+# download source code
+[tasks.source]
+condition = { files_not_exist = ["${PROJECT_DIR}/harfbuzz"]}
+script_runner = "@shell"
+script = '''
+git clone https://github.com/harfbuzz/harfbuzz.git --depth 1 || rm -rf openthread
+'''
+
+[tasks.lib]
+script_runner = "@shell"
+script = '''
+cd ${PROJECT_DIR} && ./build_lib.sh
+'''
+dependencies = ["cc", "cxx", "ar"]

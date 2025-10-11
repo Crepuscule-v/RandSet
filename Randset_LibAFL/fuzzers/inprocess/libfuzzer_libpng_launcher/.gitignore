@@ -1,0 +1,5 @@
+fuzzer_stats.toml
+libpng-*
+fuzzer_stats.csv
+.gdbinit
+a_sancov_cfg

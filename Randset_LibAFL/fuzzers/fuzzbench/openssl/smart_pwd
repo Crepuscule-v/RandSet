@@ -1,0 +1,12 @@
+#!/usr/bin/bash 
+
+if [[ $# -ne 0 ]]; then
+  cd $1 && pwd
+  if [[ $? -ne 0 ]]; then
+    exit 1
+  fi
+else
+  pwd
+fi
+
+exit 0

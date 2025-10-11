@@ -1,0 +1,125 @@
+# Variables
+[env]
+FUZZER_NAME = 'fuzzer_ossfuzz'
+CARGO_TARGET_DIR = { value = "${PROJECT_DIR}/target", condition = { env_not_set = [
+  "CARGO_TARGET_DIR",
+] } }
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+PROFILE_DIR = { source = "${PROFILE}", default_value = "release", mapping = { "release" = "release", "dev" = "debug" }, condition = { env_not_set = [
+  "PROFILE_DIR",
+] } }
+LIBAFL_CC = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cc'
+CDEFS = '-DSQLITE_MAX_LENGTH=128000000 -DSQLITE_MAX_SQL_LENGTH=128000000 -DSQLITE_MAX_MEMORY=250000000 -DSQLITE_PRINTF_PRECISION_LIMIT=1048576 -DSQLITE_DEBUG=1 -DSQLITE_MAX_PAGE_COUNT=16384'
+LIBAFL_CXX = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_cxx'
+LIBAFL_AR = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_ar'
+LIBAFL_LIBTOOL = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_libtool'
+FUZZER = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/${FUZZER_NAME}'
+PROJECT_DIR = { script = ["pwd"] }
+PROJECT_ROOT_DIR = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../.."] }
+LIBSQLITE = '${PROJECT_DIR}/sqlite/build/libsqlite3.a'
+JSON_PATH = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../../json/"], condition = { env_not_set = ["JSON_PATH"] } }
+# required if need libafl_cc's dump-cfg-pass
+# CFG_LD = { value = "../../../libafl_cc/src/cfg-ld.py", condition = { env_not_set = ["CFG_LD"] } }
+# required if need libafl_cc's dump-cfg-pass
+# JSON_PATH = { value = "/home/anonymous/json", conditioin = { env_not_set = ["JSON_PATH"] } }
+
+# check that env vars are set as expected.
+[tasks.check_env]
+script_runner = "@shell"
+script = '''
+echo PROJECT_DIR=${PROJECT_DIR}
+echo PROJECT_ROOT_DIR=${PROJECT_ROOT_DIR}
+'''
+
+[tasks.cc]
+condition = { files_not_exist = ["${LIBAFL_CC}"] }
+script_runner = "@shell"
+script = '''
+cargo build --profile ${PROFILE}
+'''
+
+[tasks.cxx]
+condition = { files_not_exist = ["${LIBAFL_CXX}"] }
+dependencies = ["cc"]
+
+[tasks.ar]
+condition = { files_not_exist = ["${LIBAFL_AR}"] }
+dependencies = ["cc"]
+
+# download source code of xml2
+[tasks.source]
+condition = { files_not_exist = ["${PROJECT_DIR}/sqlite"]}
+script_runner = "@shell"
+script = '''
+curl https://sqlite.org/src/tarball/sqlite.tar.gz?r=c78cbf2e86850cc6 -o sqlite3.tar.gz
+tar xzf sqlite3.tar.gz
+'''
+
+[tasks.lib]
+condition = { files_not_exist = ["${LIBSQLITE}"] }
+script_runner = "@shell"
+script = '''
+cd ${PROJECT_DIR}/sqlite/
+mkdir -p build && cd build
+CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR} ../configure --disable-werror
+make -j50 && make sqlite3.c
+${LIBAFL_CC} ${CDEFS} -I. -c sqlite3.c -o sqlite3.o
+${LIBAFL_AR} rcs libsqlite3.a sqlite3.o
+'''
+dependencies = ["cc", "cxx", "ar", "source"]
+
+[tasks.clean_lib]
+script_runner = "@shell"
+command = "rm"
+args = ["-rf", "${PROJECT_DIR}/sqlite/build"]
+
+[tasks.clean_miscellaneous]
+script_runner = "@shell"
+script = '''
+rm -f ${PROJECT_DIR}/*.o ${PROJECT_DIR}/*.cfg ${PROJECT_DIR}/fuzzer_ossfuzz* ${PROJECT_DIR}/.*.bc || true
+'''
+
+[tasks.clean_cargo]
+script_runner = "@shell"
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean]
+dependencies = ["clean_lib", "clean_miscellaneous", "clean_cargo"]
+
+[tasks.harness_obj]
+condition = { files_not_exist = ["${PROJECT_DIR}/harness.o"]}
+command = "${LIBAFL_CC}"
+args = [
+  "-c",
+  "${PROJECT_DIR}/sqlite/test/ossfuzz.c",
+  "-I${PROJECT_DIR}/sqlite/build",
+  "-o",
+  "${PROJECT_DIR}/harness.o"
+]
+dependencies = ["cxx", "cc", "lib"]
+
+[tasks.fuzzer]
+command = "${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cxx"
+args = [
+  "${PROJECT_DIR}/harness.o",
+  "${LIBSQLITE}",
+  "-o",
+  "${FUZZER_NAME}",
+]
+dependencies = ["lib", "cxx", "cc", "harness_obj"]
+
+[tasks.cfg]
+script_runner = "@shell"
+script = '''
+  cd ${PROJECT_DIR} && ./build_cfg.sh ${FUZZER_NAME}.coverage_asan
+'''
+dependencies = ["fuzzer"]
+
+[tasks.run]
+description = "Runs the fuzzer."
+script_runner = '@shell'
+script = '''
+AFL_CFG_PATH=${PROJECT_DIR}/${FUZZER_NAME}.coverage_asan_cfg ./fuzzer_ossfuzz.asan --input ${PROJECT_DIR}/input --cores 0
+'''
+dependencies = ["fuzzer", "cfg"]

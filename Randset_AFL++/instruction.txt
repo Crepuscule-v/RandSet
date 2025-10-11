@@ -1,0 +1,35 @@
+make uninstall
+make clean
+make source-only
+make install
+
+export AFL_CFG_PATH="/home/SeedScheduling/sancov_cfg"
+echo $AFL_CFG_PATH
+
+CC="/home/SeedScheduling/afl-clang-fast"
+CXX="/home/SeedScheduling/afl-clang-fast++"
+
+$CXX $CXXFLAGS -std=c++11 -I. ./binaries/fuzzdemo/test.c -o ./binaries/fuzzdemo/fuzztest
+python3 gen_graph.py ./binaries/fuzzdemo/fuzztest
+
+export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
+
+./afl-fuzz -H -i test_input -o output_dir ./binaries/fuzzdemo/fuzztest @@
+
+for zlib
+export ASAN_OPTIONS=detect_leaks=0
+export AFL_USE_ASAN=1
+ 
+make clean
+make source-only
+
+export CC=/home/SeedScheduling/afl-clang-fast
+export CXX=/home/SeedScheduling/afl-clang-fast++
+cd zlib
+$CXX $CXXFLAGS -std=c++11 -I. ../zlib_uncompress_fuzzer.cc -o ../binaries/optfuzz_build/zlibtest /home/SeedScheduling/libAFLDriver.a ./libz.a
+cd ..
+python3 gen_graph.py ./binaries/optfuzz_build/zlibtest
+./afl-fuzz -H -i test_input -o output_dir ./binaries/optfuzz_build/zlibtest @@
+
+
+$CXX $CXXFLAGS -std=c++11 /home/SeedScheduling/fuzzer-test-suite/libxml2-v2.9.2/target.cc -I include/ .libs/libxml2.a /home/SeedScheduling/libAFLDriver.a  -lz -o /home/SeedScheduling/binaries/libxml2

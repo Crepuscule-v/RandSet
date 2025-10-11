@@ -1,0 +1,5 @@
+*.tar
+*.tar.gz
+binutils-2.34/
+corpus/
+fuzzer_stats.toml

@@ -1,0 +1,46 @@
+[package]
+name = "libfuzzer_libstr"
+version = "0.14.1"
+authors = [
+  "anonymous <anonymous@m.anonymous.edu.cn>",
+]
+edition = "2021"
+
+[features]
+default = ["queue"]
+queue = []
+setcover = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
+
+[build-dependencies]
+cc = { version = "1.1.21", features = ["parallel"] }
+which = "6.0.3"
+
+[dependencies]
+libafl = { path = "../../../libafl", features = [
+  "std",
+  "derive",
+  "llmp_compression",
+  "introspection",
+] }
+libafl_bolts = { path = "../../../libafl_bolts" }
+libafl_targets = { path = "../../../libafl_targets", features = [
+  "sancov_pcguard_hitcounts",
+  "libfuzzer",
+] }
+libafl_cc = { path = "../../../libafl_cc", features = [
+  "default"
+] }
+
+clap = { version = "4.5.18", features = ["derive"] }
+log = { version = "0.4.22", features = ["release_max_level_info"] }
+mimalloc = { version = "0.1.43", default-features = false }
+
+[lib]
+name = "libfuzzer_libstr"
+crate-type = ["staticlib"]

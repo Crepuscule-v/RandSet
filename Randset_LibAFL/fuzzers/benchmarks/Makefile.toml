@@ -1,0 +1,237 @@
+# Variables
+[env]
+CARGO_TARGET_DIR = { value = "${PROJECT_DIR}/target", condition = { env_not_set = [
+  "CARGO_TARGET_DIR",
+] } }
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+PROFILE_DIR = { source = "${PROFILE}", default_value = "release", mapping = { "release" = "release", "dev" = "debug" }, condition = { env_not_set = [
+  "PROFILE_DIR",
+] } }
+LIBAFL_CC = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cc'
+LIBAFL_CXX = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_cxx'
+LIBAFL_AR = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_ar'
+LIB_FUZZER = '${CARGO_TARGET_DIR}/${PROFILE}/liblibfuzzer.a'
+LIBAFL_LIBTOOL = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_libtool'
+PROJECT_DIR = { script = ["pwd"] }
+PROJECT_ROOT_DIR = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../.."] }
+JSON_PATH = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../json/"], condition = { env_not_set = ["JSON_PATH"] } }
+# required if need libafl_cc's dump-cfg-pass
+# CFG_LD = { value = "../../../libafl_cc/src/cfg-ld.py", condition = { env_not_set = ["CFG_LD"] } }
+# required if need libafl_cc's dump-cfg-pass
+# JSON_PATH = { value = "/home/anonymous/json", conditioin = { env_not_set = ["JSON_PATH"] } }
+
+# check that env vars are set as expected.
+[tasks.check_env]
+script_runner = "@shell"
+script = '''
+echo PROJECT_DIR=${PROJECT_DIR}
+echo PROJECT_ROOT_DIR=${PROJECT_ROOT_DIR}
+'''
+
+[tasks.cc]
+condition = { files_not_exist = ["${LIBAFL_CC}"] }
+script_runner = "@shell"
+script = '''
+cargo build --profile ${PROFILE}
+'''
+
+[tasks.cxx]
+condition = { files_not_exist = ["${LIBAFL_CXX}"] }
+dependencies = ["cc"]
+
+[tasks.ar]
+condition = { files_not_exist = ["${LIBAFL_AR}"] }
+dependencies = ["cc"]
+
+[tasks.libfuzzer]
+condition = { files_not_exist = ["${LIB_FUZZER}"] }
+dependencies = ["cc"]
+
+[tasks.fuzzer_ossfuzz]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/sqlite.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+]
+dependencies = ["cc", "cxx", "ar"]
+
+[tasks.clean_ossfuzz]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/sqlite.mk", "clean",
+]
+
+[tasks.fuzzer_xml2]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/xml2.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+]
+dependencies = ["cc", "cxx", "ar"]
+
+[tasks.clean_xml2]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/xml2.mk", "clean",
+]
+
+[tasks.fuzzer_openssl]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/openssl.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+]
+dependencies = ["cc", "cxx", "ar"]
+
+[tasks.clean_openssl]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/openssl.mk", "clean",
+]
+
+[tasks.fuzzer_bloaty]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/bloaty.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_bloaty]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/bloaty.mk", "clean",
+]
+
+[tasks.fuzzer_freetype2]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/freetype2.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.fuzzer_hbshape]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/hb-shape.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_hbshape]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/hb-shape.mk", "clean",
+]
+
+[tasks.fuzzer_json]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/json.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_json]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/json.mk", "clean",
+]
+
+### re2
+[tasks.fuzzer_re2]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/re2.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_re2]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/re2.mk", "clean",
+]
+
+### curl
+[tasks.fuzzer_curl]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/curl.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+### zlib
+[tasks.fuzzer_libz]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/libz.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_libz]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/libz.mk", "clean"
+]
+
+### proj4
+[tasks.fuzzer_proj]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/proj.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_proj]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/proj.mk", "clean"
+]
+
+### libpcap
+[tasks.fuzzer_pcap]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/pcap.mk", "all",
+  "CC=${LIBAFL_CC}", "CXX=${LIBAFL_CXX}", "AR=${LIBAFL_AR}",
+  "LIB_FUZZER=",
+]
+dependencies = ["cc", "cxx", "ar", "libfuzzer"]
+
+[tasks.clean_pcap]
+command = "make"
+args = [
+  "-C", "${PROJECT_DIR}", "-f", "${PROJECT_DIR}/pcap.mk", "clean"
+]
+
+### FIXME
+
+[tasks.clean_lib]
+dependencies = ["clean_ossfuzz", "clean_xml2", "clean_openssl"]
+
+[tasks.clean_miscellaneous]
+script_runner = "@shell"
+script = '''
+rm -f ${PROJECT_DIR}/*.o ${PROJECT_DIR}/*.cfg ${PROJECT_DIR}/fuzzer_ossfuzz* ${PROJECT_DIR}/.*.bc || true
+'''
+
+[tasks.clean_cargo]
+script_runner = "@shell"
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean]
+dependencies = ["clean_lib", "clean_miscellaneous", "clean_cargo"]

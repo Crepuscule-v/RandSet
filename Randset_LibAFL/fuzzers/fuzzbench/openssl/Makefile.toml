@@ -1,0 +1,128 @@
+# Variables
+[env]
+FUZZER_NAME = 'fuzzer_openssl'
+CARGO_TARGET_DIR = { value = "${PROJECT_DIR}/target", condition = { env_not_set = [
+  "CARGO_TARGET_DIR",
+] } }
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+PROFILE_DIR = { source = "${PROFILE}", default_value = "release", mapping = { "release" = "release", "dev" = "debug" }, condition = { env_not_set = [
+  "PROFILE_DIR",
+] } }
+LIBAFL_CC = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cc'
+LIBAFL_CXX = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_cxx'
+LIBAFL_AR = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_ar'
+LIBAFL_LIBTOOL = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_libtool'
+FUZZER = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/${FUZZER_NAME}'
+LIB = '${PROJECT_DIR}/openssl/libssl.a'
+PROJECT_DIR = { script = ["pwd"] }
+CFG_LD = { value = "" }
+PROJECT_ROOT_DIR = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../.."] }
+JSON_PATH = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../../json/"], condition = { env_not_set = ["JSON_PATH"] } }
+
+# should be set in the environment if libafl_cc
+# is built with the `cfg-ld` feature enabled
+
+# JSON_PATH = { value = "/home/anonymous/json", conditioin = { env_not_set = ["JSON_PATH"] } }
+# CFG_LD = { value = "/home/anonymous/LibAFL/libafl_cc/src/cfg-ld.py", condition = { env_not_set = ["CFG_LD"] } }
+
+[tasks.source]
+condition = { files_not_exist = ["${PROJECT_DIR}/openssl"]}
+script_runner = "@shell"
+script = '''
+git clone --depth 1 --branch openssl-3.0.7 https://github.com/openssl/openssl.git
+'''
+
+[tasks.cc]
+condition = { files_not_exist = ["${LIBAFL_CC}"] }
+script_runner = "@shell"
+script = '''
+JSON_PATH=${JSON_PATH} cargo build --profile ${PROFILE}
+'''
+dependencies = []
+
+[tasks.cxx]
+dependencies = ["cc"]
+
+[tasks.ar]
+dependencies = ["cc"]
+
+[tasks.lib]
+condition = { files_not_exist = ["${LIB}"] }
+script_runner = "@shell"
+script = '''
+cd ${PROJECT_DIR}/openssl
+CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR} ./config --debug enable-fuzz-libfuzzer -DPEDANTIC -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION no-shared enable-tls1_3 enable-rc5 enable-md2 enable-ec_nistp_64_gcc_128 enable-ssl3 enable-ssl3-method enable-nextprotoneg enable-weak-ssl-ciphers -fno-sanitize=alignment
+make LDCMD="${LIBAFL_CXX}" CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR}
+'''
+dependencies = ["cc", "cxx", "ar", "source"]
+
+[tasks.harness_obj]
+command = "${LIBAFL_CXX}"
+args = [
+  "-g", "-O0", "-m64",  "-Wall",
+  "-fno-sanitize=alignment", "-fno-omit-frame-pointer",
+  "-I${PROJECT_DIR}/openssl/include",
+  "-I${PROJECT_DIR}/openssl/fuzz",
+  "-DOPENSSL_BUILDING_OPENSSL",
+  "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION",
+  "-DPEDANTIC",
+  "-c",
+  "${PROJECT_DIR}/harness.cc",
+  "-o",
+  "${PROJECT_DIR}/harness.o",
+]
+dependencies = ["cxx", "cc", "lib"]
+
+[tasks.fuzzer]
+script_runner = "@shell"
+command = "${LIBAFL_CXX}"
+args = [
+  "-pthread", "-m64", "-g", "-O0", "-Wall",
+  "-fno-sanitize=alignment", "-fno-omit-frame-pointer",
+  "-o", "${FUZZER_NAME}",
+  "${PROJECT_DIR}/harness.o",
+  "${PROJECT_DIR}/openssl/fuzz/x509-test-bin-fuzz_rand.o",
+  "${PROJECT_DIR}/openssl/libcrypto.a", "-ldl", "-lpthread",
+]
+dependencies = ["lib", "harness_obj"]
+
+[tasks.cfg]
+script_runner = "@shell"
+script = '''
+  cd ${PROJECT_DIR} && ./build_cfg.sh ${FUZZER_NAME}.coverage
+'''
+dependencies = ["fuzzer"]
+
+[tasks.run]
+description = "Runs the fuzzer."
+script_runner = '@shell'
+script = '''
+AFL_CFG_PATH=${PROJECT_DIR}/${FUZZER_NAME}.coverage_asan_cfg ./${FUZZER_NAME}.asan --input ${PROJECT_DIR}/input --cores 0
+'''
+dependencies = ["fuzzer", "cfg"]
+
+[tasks.clean_cargo]
+description = "Runs the cargo clean command."
+category = "Cleanup"
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean_lib]
+category = "Cleanup"
+command = "make"
+args = ["-C", "openssl", "clean"]
+
+[tasks.clean_miscellaneous]
+category = "Cleanup"
+script_runner = "@shell"
+script = '''
+rm -f ${PROJECT_DIR}/*.o ${PROJECT_DIR}/*.cfg ${PROJECT_DIR}/*.csv ${PROJECT_DIR}/fuzzer_openssl* ${PROJECT_DIR}/.*.bc
+'''
+
+[tasks.full_clean]
+description = "Runs both clean tasks."
+category = "Cleanup"
+dependencies = ["clean_cargo", "clean_lib", "clean_miscellaneous"]
+
+[tasks.clean]
+dependencies = ["full_clean"]

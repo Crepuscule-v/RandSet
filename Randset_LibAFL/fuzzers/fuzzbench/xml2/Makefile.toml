@@ -1,0 +1,122 @@
+# Variables
+[env]
+FUZZER_NAME = 'fuzzer_libxml2'
+CARGO_TARGET_DIR = { value = "${PROJECT_DIR}/target", condition = { env_not_set = [
+  "CARGO_TARGET_DIR",
+] } }
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+PROFILE_DIR = { source = "${PROFILE}", default_value = "release", mapping = { "release" = "release", "dev" = "debug" }, condition = { env_not_set = [
+  "PROFILE_DIR",
+] } }
+LIBAFL_CC = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cc'
+LIBAFL_CXX = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_cxx'
+LIBAFL_AR = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_ar'
+LIBAFL_LIBTOOL = '${CARGO_TARGET_DIR}/${PROFILE}/libafl_libtool'
+FUZZER = '${CARGO_TARGET_DIR}/${PROFILE_DIR}/${FUZZER_NAME}'
+PROJECT_DIR = { script = ["pwd"] }
+PROJECT_ROOT_DIR = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../.."] }
+CFG_GEN_PASS = { value = "${PROJECT_ROOT_DIR}/SeedScheduling/SanitizerCoveragePCGUARD.so", condition = { env_not_set = ["CFG_GEN_PASS"] } }
+JSON_PATH = { script = ["${PROJECT_DIR}/smart_pwd ${PROJECT_DIR}/../../../json/"], condition = { env_not_set = ["JSON_PATH"] } }
+# required if need libafl_cc's dump-cfg-pass
+# CFG_LD = { value = "../../../libafl_cc/src/cfg-ld.py", condition = { env_not_set = ["CFG_LD"] } }
+
+[tasks.instrumentation]
+condition = { files_not_exist = ["${CFG_GEN_PASS}"]}
+script_runner = "@shell"
+script = '''
+cd ${PROJECT_ROOT_DIR}/SeedScheduling
+make
+ls ${CFG_GEN_PASS}
+'''
+
+[tasks.cc]
+condition = { files_not_exist = ["${LIBAFL_CC}"] }
+script_runner = "@shell"
+script = '''
+JSON_PATH=${JSON_PATH} cargo build --profile ${PROFILE}
+'''
+dependencies = ["instrumentation"]
+
+[tasks.cxx]
+condition = { files_not_exist = ["${LIBAFL_CXX}"] }
+dependencies = ["cc"]
+
+[tasks.ar]
+condition = { files_not_exist = ["${LIBAFL_AR}"] }
+dependencies = ["cc"]
+
+# download source code of xml2
+[tasks.source]
+condition = { files_not_exist = ["${PROJECT_DIR}/xml2"]}
+script_runner = "@shell"
+script = '''
+git clone https://gitlab.gnome.org/GNOME/libxml2.git ${PROJECT_DIR}/xml2 --depth 1
+'''
+
+[tasks.lib]
+condition = { files_not_exist = ["${PROJECT_DIR}/xml2/.libs/libxml2.a"] }
+script_runner = "@shell"
+script = '''
+cd "${PROJECT_DIR}/xml2"
+CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR} ./autogen.sh
+CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR} ./configure --enable-static=yes --enable-shared=no
+export CFG_GEN_PASS=${CFG_GEN_PASS}
+make CC=${LIBAFL_CC} CXX=${LIBAFL_CXX} AR=${LIBAFL_AR}
+'''
+dependencies = ["cc", "cxx", "ar", "source"]
+
+[tasks.clean_lib]
+script_runner = "@shell"
+command = "make"
+args = ["-C", "${PROJECT_DIR}/xml2", "clean"]
+
+[tasks.clean_miscellaneous]
+script_runner = "@shell"
+script = '''
+rm -f ${PROJECT_DIR}/*.o ${PROJECT_DIR}/*.cfg ${PROJECT_DIR}/fuzzer_libxml2* ${PROJECT_DIR}/.*.bc
+'''
+
+[tasks.clean_cargo]
+script_runner = "@shell"
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean]
+dependencies = ["clean_lib", "clean_miscellaneous", "clean_cargo"]
+
+[tasks.harness_obj]
+condition = { files_not_exist = ["${PROJECT_DIR}/harness.o"]}
+command = "${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cxx"
+args = [
+  "-c",
+  "${PROJECT_DIR}/harness.cc",
+  "-I${PROJECT_DIR}/xml2/include",
+  "-o",
+  "${PROJECT_DIR}/harness.o"
+]
+dependencies = ["cxx", "cc"]
+
+[tasks.fuzzer]
+command = "${CARGO_TARGET_DIR}/${PROFILE_DIR}/libafl_cxx"
+args = [
+  "${PROJECT_DIR}/harness.o",
+  "${PROJECT_DIR}/xml2/.libs/libxml2.a",
+  "-o",
+  "${FUZZER_NAME}",
+]
+dependencies = ["lib", "cxx", "cc", "harness_obj"]
+
+[tasks.cfg]
+script_runner = "@shell"
+script = '''
+  cd ${PROJECT_DIR} && ./build_cfg.sh ${FUZZER_NAME}.coverage
+'''
+dependencies = ["fuzzer"]
+
+[tasks.run]
+description = "Runs the fuzzer."
+script_runner = '@shell'
+script = '''
+AFL_CFG_PATH=${PROJECT_DIR}/fuzzer_libxml2_sancov_cfg ./fuzzer_libxml2.asan --input ${PROJECT_DIR}/input --cores 0
+'''
+dependencies = ["fuzzer", "cfg"]

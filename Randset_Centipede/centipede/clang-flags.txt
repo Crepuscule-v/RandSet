@@ -1,0 +1,6 @@
+-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+-fno-builtin
+-fsanitize=address
+-fsanitize-coverage=trace-pc-guard,pc-table,trace-cmp,control-flow,no-prune
+-O2
+-gline-tables-only
